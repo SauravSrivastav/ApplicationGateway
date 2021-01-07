@@ -1,0 +1,100 @@
+
+* Web Application firewall (WAF): WAF in Azure is Azure Application Gateway.
+
+* Link Used: https://docs.microsoft.com/en-us/azure/aks/operator-best-practices-network
+
+                                                                       
+
+************************************************************************************************************************************************************************
+                                                              Application Gateway Installation
+************************************************************************************************************************************************************************
+
+Step1: Create a subnet in the existing virtual network to install Application Gateway:
+az network vnet subnet create -g ece-infrademo-rg --vnet-name eceinfrademovnet --name appgatewaysubnet --address-prefixes 10.233.0.0/24
+
+
+Step2: Create public IP:
+az network public-ip create -g ece-infrademo-rg -n appgatewayPublicIP --allocation-method Static --sku Standard
+
+Step3: Create Application Gateway:
+az network application-gateway create \
+-g ece-infrademo-rg \
+-n testag \
+--capacity 1 \
+--sku Standard_v2 \
+--vnet-name eceinfrademovnet \
+--subnet appgatewaysubnet \
+--public-ip-address appgatewayPublicIP \
+--location EastUS
+
+
+Note: Confirm the Azure portal when the creation is complete.
+
+***********************************************************************************************************************************************************************
+                                                            AKS and Application Gateway configurations
+***********************************************************************************************************************************************************************
+
+Step1: Modify the service definition at the end of net-app.yaml(Service) to configure your internal load balancer: check net-app.yaml
+
+
+Step2: Deploy the manifest file:
+kubectl apply -f net-app.yaml
+
+
+Step3: From the kubectl get svc command, confirm that EXTERNAL-IP is a virtual network address(10.233.0.0/22):
+
+
+Step4: Now open Application Gateway from the Azure portal and select our backend pool.
+
+
+Step5: Select the existing appGatewayBackendPool and set the target value of EXTERNAL-IP. Click "Save".
+
+
+Step6: Confirm public IP from frontend IP configuration.
+
+
+
+
+
+
+
+
+
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: frontendv2-ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        backend:
+          serviceName: frontend
+          servicePort: 80
+
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-resource-rules
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-staging
+    #cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+spec:
+  rules:
+  - host: nginxingress-aks-ingress.eastus.cloudapp.azure.com
+    http:
+      paths:
+      - backend:
+          serviceName: app-gw
+          servicePort: 80
+        path: /(.*)
+
